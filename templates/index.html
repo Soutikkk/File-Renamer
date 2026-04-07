@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Batch File Renamer</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="app-container">
+        <header>
+            <h1><span class="icon">✨</span> Batch Renamer</h1>
+            <button id="undoBtn" class="btn outline" title="Undo Last Batch">↩ Undo</button>
+        </header>
+
+        <main class="grid-layout">
+            <section class="panel control-panel">
+                <h2>Directory Settings</h2>
+                <div class="input-group">
+                    <label for="directory">Directory Path</label>
+                    <div class="d-flex">
+                        <input type="text" id="directory" placeholder="C:\Users\Username\Documents" required>
+                        <button id="loadFilesBtn" class="btn primary">Load</button>
+                    </div>
+                </div>
+                <div class="input-group">
+                    <label for="extFilter">Filter by Extension (e.g. .jpg)</label>
+                    <input type="text" id="extFilter" placeholder=".txt, .png ...">
+                </div>
+
+                <div class="divider"></div>
+
+                <h2>Renaming Options</h2>
+                <div class="options-grid">
+                    <div class="input-group">
+                        <label for="prefix">Add Prefix</label>
+                        <input type="text" id="prefix" class="option-input" placeholder="prefix_">
+                    </div>
+                    <div class="input-group">
+                        <label for="suffix">Add Suffix</label>
+                        <input type="text" id="suffix" class="option-input" placeholder="_suffix">
+                    </div>
+                    <div class="input-group full-width">
+                        <label for="replaceTarget">Replace Text</label>
+                        <div class="d-flex">
+                            <input type="text" id="replaceTarget" class="option-input" placeholder="Find...">
+                            <input type="text" id="replaceWith" class="option-input" placeholder="Replace...">
+                        </div>
+                    </div>
+                    <div class="input-group full-width">
+                        <label for="removeText">Remove Text</label>
+                        <input type="text" id="removeText" class="option-input" placeholder="Text to remove">
+                    </div>
+                    <div class="input-group check-group">
+                        <input type="checkbox" id="numbering" class="option-input">
+                        <label for="numbering">Add Sequential Numbering (001, 002)</label>
+                    </div>
+                    <div class="input-group check-group danger-zone">
+                        <input type="checkbox" id="allowOverwrite">
+                        <label for="allowOverwrite">Allow Overwrite</label>
+                    </div>
+                </div>
+            </section>
+
+            <section class="panel preview-panel">
+                <div class="panel-header">
+                    <h2>Live Preview <span class="badge" id="fileCount">0 files</span></h2>
+                    <button id="renameBtn" class="btn success" disabled>Apply Rename</button>
+                </div>
+                
+                <div class="table-container">
+                    <table id="previewTable">
+                        <thead>
+                            <tr>
+                                <th>Original Name</th>
+                                <th>New Name</th>
+                            </tr>
+                        </thead>
+                        <tbody id="previewBody">
+                            <tr>
+                                <td colspan="2" class="empty-state">Select a directory to view files</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+        </main>
+        
+        <!-- Toast Notification -->
+        <div id="toast" class="toast">Message goes here</div>
+        
+        <!-- Confirmation Modal -->
+        <div id="confirmModal" class="modal">
+            <div class="modal-content">
+                <h3>Confirm Rename</h3>
+                <p>Are you sure you want to rename <span id="confirmCount">0</span> files?</p>
+                <div class="modal-actions">
+                    <button id="cancelRenameBtn" class="btn outline">Cancel</button>
+                    <button id="proceedRenameBtn" class="btn success">Yes, Proceed</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>

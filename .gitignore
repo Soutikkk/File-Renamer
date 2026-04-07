@@ -1,0 +1,16 @@
+# Environments
+venv/
+env/
+.env
+
+# Python compilation files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# App history files
+rename_history.json
+
+# OS generated files
+.DS_Store
+Thumbs.db
