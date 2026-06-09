@@ -1,4 +1,5 @@
-# 📁 Batch File Renamer
+# 📁 Batch File Renamer 
+(VIBECODED)
 
 A sleek, intuitive, and modern web application built with **Python Flask** to seamlessly perform batch file renaming across your directories. It guarantees safe bulk edits, live previews, and easy undo operations, enclosed in a premium dark-themed "glassmorphism" user interface.
 
