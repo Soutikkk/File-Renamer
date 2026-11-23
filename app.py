@@ -1,294 +1,320 @@
 
 import os
 import json
+
 from flask import Flask, render_template, request, jsonify
+
 
 app = Flask(__name__)
 
 HISTORY_FILE = "rename_history.json"
+INVALID_CHARACTERS = '<>:"/\\|?*'
 
 
-# --------------------------------------------------
-# History Management
-# --------------------------------------------------
+# ==================================================
+# HISTORY MANAGEMENT
+# ==================================================
 
 def load_history():
-    """Load rename history from the JSON file."""
+    """Read previously saved rename operations."""
+
     if not os.path.exists(HISTORY_FILE):
         return []
 
     try:
         with open(HISTORY_FILE, "r", encoding="utf-8") as file:
             return json.load(file)
-    except (json.JSONDecodeError, OSError):
+
+    except (OSError, json.JSONDecodeError):
         return []
 
 
-def save_history(operations):
-    """Save a batch of successful rename operations."""
-    history = load_history()
-    history.append(operations)
+def save_history(history):
+    """Write rename history to the JSON file."""
 
     with open(HISTORY_FILE, "w", encoding="utf-8") as file:
         json.dump(history, file, indent=4)
 
 
-# --------------------------------------------------
-# Filename Utilities
-# --------------------------------------------------
+def add_to_history(operations):
+    """Add a successful rename batch to history."""
+
+    history = load_history()
+    history.append(operations)
+
+    save_history(history)
+
+
+# ==================================================
+# FILENAME UTILITIES
+# ==================================================
 
 def sanitize_filename(filename):
-    """Remove characters that are invalid in Windows filenames."""
-    invalid_chars = '<>:"/\\|?*'
+    """Remove characters not allowed in Windows filenames."""
 
-    for char in invalid_chars:
-        filename = filename.replace(char, "")
-
-    return filename
+    return "".join(
+        char for char in filename
+        if char not in INVALID_CHARACTERS
+    )
 
 
 def generate_new_filename(filename, index, options):
-    """Generate a new filename using the selected options."""
-    new_name = filename
+    """Generate a filename using the selected options."""
 
-    # Replace specified text
-    replace_target = options.get("replace_target", "")
-    replace_with = options.get("replace_with", "")
+    # Replace text
+    target = options.get("replace_target", "")
+    replacement = options.get("replace_with", "")
 
-    if replace_target:
-        new_name = new_name.replace(replace_target, replace_with)
+    if target:
+        filename = filename.replace(target, replacement)
 
-    # Remove specified text
+    # Remove text
     remove_text = options.get("remove_text", "")
 
     if remove_text:
-        new_name = new_name.replace(remove_text, "")
+        filename = filename.replace(remove_text, "")
 
     # Separate filename and extension
-    name, extension = os.path.splitext(new_name)
+    name, extension = os.path.splitext(filename)
 
-    # Add prefix
+    # Add prefix and suffix
     prefix = options.get("prefix", "")
-
-    if prefix:
-        new_name = f"{prefix}{name}{extension}"
-
-    # Add suffix before extension
-    name, extension = os.path.splitext(new_name)
     suffix = options.get("suffix", "")
 
-    if suffix:
-        new_name = f"{name}{suffix}{extension}"
+    name = f"{prefix}{name}{suffix}"
 
     # Add sequential numbering
-    if options.get("numbering"):
-        name, extension = os.path.splitext(new_name)
-        new_name = f"{name}_{str(index + 1).zfill(3)}{extension}"
+    if options.get("numbering", False):
+        name += f"_{index + 1:03d}"
 
-    return sanitize_filename(new_name)
+    # Combine and sanitize
+    return sanitize_filename(name + extension)
 
 
-def get_preview_names(files, options):
-    """Generate a preview without renaming any files."""
-    preview = []
+def generate_preview(files, options):
+    """Generate proposed filenames without changing files."""
 
-    for index, filename in enumerate(files):
-        new_name = generate_new_filename(
-            filename,
-            index,
-            options
-        )
-
-        preview.append({
+    return [
+        {
             "original": filename,
-            "new": new_name
-        })
+            "new": generate_new_filename(
+                filename, index, options
+            )
+        }
+        for index, filename in enumerate(files)
+    ]
 
-    return preview
+
+# ==================================================
+# DIRECTORY UTILITIES
+# ==================================================
+
+def is_valid_directory(directory):
+    """Check whether the directory exists."""
+
+    return bool(directory) and os.path.isdir(directory)
 
 
-# --------------------------------------------------
-# File Listing
-# --------------------------------------------------
+def get_directory_files(directory, extension_filter=""):
+    """Return sorted files matching the extension filter."""
+
+    files = []
+
+    for filename in os.listdir(directory):
+
+        file_path = os.path.join(directory, filename)
+
+        if not os.path.isfile(file_path):
+            continue
+
+        if extension_filter:
+            if not filename.lower().endswith(extension_filter.lower()):
+                continue
+
+        files.append(filename)
+
+    return sorted(files)
+
+
+# ==================================================
+# FILE ROUTES
+# ==================================================
 
 @app.route("/files", methods=["POST"])
 def list_files():
-    """Return files in a directory, optionally filtered by extension."""
+    """List files inside a selected directory."""
+
     data = request.get_json(silent=True) or {}
 
     directory = data.get("directory", "")
-    extension_filter = data.get("extension_filter", "").strip().lower()
+    extension = data.get("extension_filter", "").strip()
 
-    if not directory or not os.path.isdir(directory):
-        return jsonify({"error": "Invalid directory path."}), 400
+    if not is_valid_directory(directory):
+        return jsonify(error="Invalid directory path."), 400
 
     try:
-        files = []
-
-        for filename in os.listdir(directory):
-            file_path = os.path.join(directory, filename)
-
-            if not os.path.isfile(file_path):
-                continue
-
-            if extension_filter and not filename.lower().endswith(extension_filter):
-                continue
-
-            files.append(filename)
-
-        return jsonify({"files": sorted(files)})
+        files = get_directory_files(directory, extension)
+        return jsonify(files=files)
 
     except OSError as error:
-        return jsonify({"error": str(error)}), 500
+        return jsonify(error=str(error)), 500
 
-
-# --------------------------------------------------
-# Rename Preview
-# --------------------------------------------------
 
 @app.route("/preview", methods=["POST"])
 def preview():
-    """Preview filename changes without modifying files."""
+    """Preview the renamed filenames."""
+
     data = request.get_json(silent=True) or {}
 
     files = data.get("files", [])
     options = data.get("options", {})
 
-    preview_data = get_preview_names(files, options)
+    preview_data = generate_preview(files, options)
 
-    return jsonify({"preview": preview_data})
+    return jsonify(preview=preview_data)
 
 
-# --------------------------------------------------
-# Rename Files
-# --------------------------------------------------
+# ==================================================
+# RENAME OPERATIONS
+# ==================================================
+
+def rename_file(directory, original_name, new_name, allow_overwrite):
+    """Rename a single file and return its operation record."""
+
+    if not original_name or not new_name:
+        return None, "Invalid rename entry."
+
+    if original_name == new_name:
+        return None, None
+
+    old_path = os.path.join(directory, original_name)
+    new_path = os.path.join(directory, new_name)
+
+    if not os.path.isfile(old_path):
+        return None, f"File not found: {original_name}"
+
+    if os.path.exists(new_path) and not allow_overwrite:
+        return None, f"File already exists: {new_name}"
+
+    try:
+        os.rename(old_path, new_path)
+
+        operation = {
+            "original_path": old_path,
+            "new_path": new_path,
+            "original_name": original_name,
+            "new_name": new_name
+        }
+
+        return operation, None
+
+    except OSError as error:
+        return None, f"Failed to rename {original_name}: {error}"
+
 
 @app.route("/rename", methods=["POST"])
 def rename():
-    """Rename files and save successful operations to history."""
+    """Rename selected files and record successful operations."""
+
     data = request.get_json(silent=True) or {}
 
     directory = data.get("directory", "")
     preview_data = data.get("preview_data", [])
     allow_overwrite = data.get("allow_overwrite", False)
 
-    if not directory or not os.path.isdir(directory):
-        return jsonify({"error": "Invalid directory path."}), 400
+    if not is_valid_directory(directory):
+        return jsonify(error="Invalid directory path."), 400
 
     operations = []
     errors = []
-    success_count = 0
 
     for item in preview_data:
-        original_name = item.get("original", "")
-        new_name = item.get("new", "")
 
-        if not original_name or not new_name:
-            errors.append("Invalid rename entry.")
-            continue
+        operation, error = rename_file(
+            directory,
+            item.get("original", ""),
+            item.get("new", ""),
+            allow_overwrite
+        )
 
-        if original_name == new_name:
-            continue
+        if operation:
+            operations.append(operation)
 
-        old_path = os.path.join(directory, original_name)
-        new_path = os.path.join(directory, new_name)
+        if error:
+            errors.append(error)
 
-        # Check whether the source file exists
-        if not os.path.isfile(old_path):
-            errors.append(f"File not found: {original_name}")
-            continue
-
-        # Prevent accidental replacement of existing files
-        if os.path.exists(new_path) and not allow_overwrite:
-            errors.append(f"File already exists: {new_name}")
-            continue
-
-        try:
-            os.rename(old_path, new_path)
-
-            operations.append({
-                "original_path": old_path,
-                "new_path": new_path,
-                "original_name": original_name,
-                "new_name": new_name
-            })
-
-            success_count += 1
-
-        except OSError as error:
-            errors.append(
-                f"Failed to rename {original_name}: {error}"
-            )
-
-    # Save successful operations for undo
     if operations:
-        save_history(operations)
+        add_to_history(operations)
 
-    return jsonify({
-        "message": f"Successfully renamed {success_count} files.",
-        "errors": errors
-    })
+    return jsonify(
+        message=f"Successfully renamed {len(operations)} files.",
+        errors=errors
+    )
 
 
-# --------------------------------------------------
-# Undo Last Rename Batch
-# --------------------------------------------------
+# ==================================================
+# UNDO OPERATIONS
+# ==================================================
+
+def undo_file(operation):
+    """Restore a renamed file to its original filename."""
+
+    renamed_path = operation["new_path"]
+    original_path = operation["original_path"]
+
+    if not os.path.exists(renamed_path):
+        return f"File not found: {renamed_path}"
+
+    if os.path.exists(original_path):
+        return f"Cannot undo: destination already exists: {original_path}"
+
+    try:
+        os.rename(renamed_path, original_path)
+        return None
+
+    except OSError as error:
+        return f"Failed to undo {operation['new_name']}: {error}"
+
 
 @app.route("/undo", methods=["POST"])
 def undo():
-    """Undo the most recent batch of successful renames."""
+    """Undo the latest batch of rename operations."""
+
     history = load_history()
 
     if not history:
-        return jsonify({
-            "error": "No recent operations to undo."
-        }), 400
+        return jsonify(error="No recent operations to undo."), 400
 
     last_batch = history.pop()
+
     errors = []
     success_count = 0
 
-    # Reverse the operations in reverse order
     for operation in reversed(last_batch):
-        old_path = operation["new_path"]
-        original_path = operation["original_path"]
 
-        try:
-            if not os.path.exists(old_path):
-                errors.append(f"File not found: {old_path}")
-                continue
+        error = undo_file(operation)
 
-            if os.path.exists(original_path):
-                errors.append(
-                    f"Cannot undo: destination already exists: {original_path}"
-                )
-                continue
-
-            os.rename(old_path, original_path)
+        if error:
+            errors.append(error)
+        else:
             success_count += 1
 
-        except OSError as error:
-            errors.append(
-                f"Failed to undo {operation['new_name']}: {error}"
-            )
+    save_history(history)
 
-    # Persist the remaining history
-    with open(HISTORY_FILE, "w", encoding="utf-8") as file:
-        json.dump(history, file, indent=4)
-
-    return jsonify({
-        "message": f"Successfully undone {success_count} files.",
-        "errors": errors
-    })
+    return jsonify(
+        message=f"Successfully undone {success_count} files.",
+        errors=errors
+    )
 
 
-# --------------------------------------------------
-# Main Application
-# --------------------------------------------------
+# ==================================================
+# MAIN APPLICATION
+# ==================================================
 
 @app.route("/")
 def index():
-    """Render the main application page."""
+    """Display the main application page."""
+
     return render_template("index.html")
 
 
